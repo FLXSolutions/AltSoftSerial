@@ -74,14 +74,8 @@ void AltSoftSerial::init(uint32_t cycles_per_bit)
       CONFIG_TIMER_ENABLE();
       PIT_ENABLE();
 
-      // Pin mux:
-      //  - PTB0 (Teensy 14) -> FTM1_CH0 (ALT3), with pullup for RX idling high
-      //  - PTB1 (Teensy 15) -> FTM1_CH1 (ALT3), push-pull driven by FTM
-      CORE_PIN14_CONFIG = PORT_PCR_MUX(3) | PORT_PCR_PE | PORT_PCR_PS;  // ALT3 + pullup
-      CORE_PIN15_CONFIG = PORT_PCR_MUX(3);                              // ALT3
-
-      // Reset counter and set compare mode on TX channel
-      SET_TIMER_COUNT(0);
+      // Configure the compare channel now; the timer and pins will be switched
+      // to FTM1 when interrupts are enabled.
       CONFIG_COMPARE_A_MODE();
     #endif
 
