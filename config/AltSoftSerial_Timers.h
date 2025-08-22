@@ -203,10 +203,35 @@
   #define SET_TIMER_MOD(val)            (FTM1_MOD = (val))
 
   // FTM_SC: CLKS (system clock), PS (prescale)
-  #define CONFIG_TIMER_NOPRESCALE()     do{ FTM1_SC = FTM_SC_CLKS(1) | FTM_SC_PS(0); }while(0)
-  #define CONFIG_TIMER_PRESCALE_8()     do{ FTM1_SC = FTM_SC_CLKS(1) | FTM_SC_PS(3); }while(0)
+  // Configure free-running 16-bit counter and prescaler.  Unlike FTM0 the
+  // FTM1 macros originally neglected to set MOD, leaving the counter running
+  // with a period of 1.  That prevented compare events from ever firing.  Set
+  // MOD to 0xFFFF and reset the counter before enabling the clock.
+  #define CONFIG_TIMER_NOPRESCALE()                                                   \
+    do {                                                                            \
+      FTM1_SC = 0;                                                                  \
+      SET_TIMER_COUNT(0);                                                           \
+      SET_TIMER_MOD(0xFFFF);                                                        \
+      FTM1_SC = FTM_SC_CLKS(1) | FTM_SC_PS(0);                                      \
+      NVIC_SET_PRIORITY(IRQ_FTM1, 48);                                              \
+    } while (0)
+  #define CONFIG_TIMER_PRESCALE_8()                                                  \
+    do {                                                                            \
+      FTM1_SC = 0;                                                                  \
+      SET_TIMER_COUNT(0);                                                           \
+      SET_TIMER_MOD(0xFFFF);                                                        \
+      FTM1_SC = FTM_SC_CLKS(1) | FTM_SC_PS(3);                                      \
+      NVIC_SET_PRIORITY(IRQ_FTM1, 48);                                              \
+    } while (0)
   // Teensy 3.x AltSoftSerial uses 128 or 256 depending on chip; MK20 has /128 available.
-  #define CONFIG_TIMER_PRESCALE_128()   do{ FTM1_SC = FTM_SC_CLKS(1) | FTM_SC_PS(7); }while(0)
+  #define CONFIG_TIMER_PRESCALE_128()                                                \
+    do {                                                                            \
+      FTM1_SC = 0;                                                                  \
+      SET_TIMER_COUNT(0);                                                           \
+      SET_TIMER_MOD(0xFFFF);                                                        \
+      FTM1_SC = FTM_SC_CLKS(1) | FTM_SC_PS(7);                                      \
+      NVIC_SET_PRIORITY(IRQ_FTM1, 48);                                              \
+    } while (0)
 
   // ---------- Channel mapping ----------
   // RX = FTM1_CH0, TX = FTM1_CH1
@@ -227,11 +252,33 @@
   #define CONFIG_MATCH_NORMAL()         do{ /* disconnect */            FTM1_C1SC = (FTM1_C1SC & ~(FTM_CnSC_ELSA|FTM_CnSC_ELSB|FTM_CnSC_MSA)); }while(0)
 
   // ---------- Interrupt enables/clears ----------
-  #define ENABLE_INT_INPUT_CAPTURE()    do{ NVIC_ENABLE_IRQ(IRQ_FTM1); FTM1_C0SC |= FTM_CnSC_CHIE; }while(0)
-  #define DISABLE_INT_INPUT_CAPTURE()   do{ FTM1_C0SC &= ~FTM_CnSC_CHIE; }while(0)
+  // When enabling interrupts, also switch the relevant pins to their timer
+  // alternate functions.  When disabling, restore them to GPIO so the line
+  // idles high.
+  #define ENABLE_INT_INPUT_CAPTURE()                                                \
+    do {                                                                           \
+      NVIC_ENABLE_IRQ(IRQ_FTM1);                                                   \
+      FTM1_C0SC |= FTM_CnSC_CHIE;                                                  \
+      CORE_PIN14_CONFIG = PORT_PCR_MUX(3) | PORT_PCR_PE | PORT_PCR_PS;              \
+    } while (0)
+  #define DISABLE_INT_INPUT_CAPTURE()                                              \
+    do {                                                                           \
+      FTM1_C0SC &= ~FTM_CnSC_CHIE;                                                 \
+      CORE_PIN14_CONFIG = PORT_PCR_MUX(1) | PORT_PCR_PE | PORT_PCR_PS;              \
+    } while (0)
 
-  #define ENABLE_INT_COMPARE_A()        do{ NVIC_ENABLE_IRQ(IRQ_FTM1); FTM1_C1SC |= FTM_CnSC_CHIE; }while(0)
-  #define DISABLE_INT_COMPARE_A()       do{ FTM1_C1SC &= ~FTM_CnSC_CHIE; }while(0)
+  #define ENABLE_INT_COMPARE_A()                                                   \
+    do {                                                                           \
+      NVIC_ENABLE_IRQ(IRQ_FTM1);                                                   \
+      FTM1_C1SC |= FTM_CnSC_CHIE;                                                  \
+      CORE_PIN15_CONFIG = PORT_PCR_MUX(3) | PORT_PCR_DSE | PORT_PCR_SRE;            \
+    } while (0)
+  #define DISABLE_INT_COMPARE_A()                                                  \
+    do {                                                                           \
+      FTM1_C1SC &= ~FTM_CnSC_CHIE;                                                 \
+      CORE_PIN15_CONFIG = PORT_PCR_MUX(1) | PORT_PCR_DSE | PORT_PCR_SRE;            \
+      digitalWriteFast(15, HIGH);                                                  \
+    } while (0)
 
   // We don't have COMPARE_B on FTM1; we'll route it to PIT0 instead.
   // Keep these as no-ops to satisfy existing calls; we'll wire the real enable/disable in code paths.
