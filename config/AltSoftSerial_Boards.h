@@ -55,6 +55,12 @@
  //#define OUTPUT_COMPARE_C_PIN		14 // unusable PWM
 
 
+ #elif defined(ALTSS_TEENSY32_ON_PINS_14_15)
+  #define ALTSS_USE_FTM1
+  #define INPUT_CAPTURE_PIN		14 // receive       (FTM0_CH5)
+  #define OUTPUT_COMPARE_A_PIN		15 // transmit      (FTM0_CH6)
+
+
 // Teensy 3.x
 //
 #elif defined(__MK20DX128__) || defined(__MK20DX256__) || defined(__MK64FX512__) || defined(__MK66FX1M0__)

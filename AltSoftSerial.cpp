@@ -1,17 +1,17 @@
 /* An Alternative Software Serial Library
  * http://www.pjrc.com/teensy/td_libs_AltSoftSerial.html
  * Copyright (c) 2014 PJRC.COM, LLC, Paul Stoffregen, paul@pjrc.com
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -34,7 +34,7 @@
 #include "AltSoftSerial.h"
 #include "config/AltSoftSerial_Boards.h"
 #include "config/AltSoftSerial_Timers.h"
-
+#include "kinetis.h"
 /****************************************/
 /**          Initialization            **/
 /****************************************/
@@ -69,6 +69,22 @@ static volatile uint8_t tx_buffer[TX_BUFFER_SIZE];
 
 void AltSoftSerial::init(uint32_t cycles_per_bit)
 {
+    #if defined(ALTSS_USE_FTM1)
+      // Enable FTM1 (timer) + PIT (timeout)
+      CONFIG_TIMER_ENABLE();
+      PIT_ENABLE();
+
+      // Pin mux:
+      //  - PTB0 (Teensy 14) -> FTM1_CH0 (ALT3), with pullup for RX idling high
+      //  - PTB1 (Teensy 15) -> FTM1_CH1 (ALT3), push-pull driven by FTM
+      CORE_PIN14_CONFIG = PORT_PCR_MUX(3) | PORT_PCR_PE | PORT_PCR_PS;  // ALT3 + pullup
+      CORE_PIN15_CONFIG = PORT_PCR_MUX(3);                              // ALT3
+
+      // Reset counter and set compare mode on TX channel
+      SET_TIMER_COUNT(0);
+      CONFIG_COMPARE_A_MODE();
+    #endif
+
 	//Serial.printf("cycles_per_bit = %d\n", cycles_per_bit);
 	if (cycles_per_bit < MAX_COUNTS_PER_BIT) {
 		CONFIG_TIMER_NOPRESCALE();
@@ -115,12 +131,14 @@ void AltSoftSerial::init(uint32_t cycles_per_bit)
 
 void AltSoftSerial::end(void)
 {
+    #ifndef ALTSS_USE_FTM1
 	DISABLE_INT_COMPARE_B();
 	DISABLE_INT_INPUT_CAPTURE();
 	flushInput();
 	flushOutput();
 	DISABLE_INT_COMPARE_A();
 	// TODO: restore timer to original settings?
+	#endif
 }
 
 
@@ -152,7 +170,7 @@ void AltSoftSerial::writeByte(uint8_t b)
 }
 
 
-ISR(COMPARE_A_INTERRUPT)
+void altss_compare_a_interrupt()
 {
 	uint8_t state, byte, bit, head, tail;
 	uint16_t target;
@@ -219,7 +237,7 @@ void AltSoftSerial::flushOutput(void)
 /**            Reception               **/
 /****************************************/
 
-ISR(CAPTURE_INTERRUPT)
+void altss_capture_interrupt()
 {
 	uint8_t state, bit, head;
 	uint16_t capture, target;
@@ -237,9 +255,19 @@ ISR(CAPTURE_INTERRUPT)
 	state = rx_state;
 	if (state == 0) {
 		if (!bit) {
-			uint16_t end = capture + rx_stop_ticks;
-			SET_COMPARE_B(end);
-			ENABLE_INT_COMPARE_B();
+		#if defined(ALTSS_USE_FTM1)
+        // Arm one-shot timeout on PIT0. Choose the same tick base as FTM1:
+        // If FTM1 runs at sysclk/prescale, compute PIT ticks accordingly.
+        // Easiest: run PIT at bus clock and scale rx_stop_ticks to PIT LDVAL.
+        // For identical tick bases, assume FTM1 uses system clock == PIT clock.
+        PIT0_CLEAR_FLAG();
+        PIT0_SET_TICKS(rx_stop_ticks);  // if clocks match 1:1; otherwise scale here
+        PIT0_START();
+        #else
+        uint16_t end = capture + rx_stop_ticks;
+        SET_COMPARE_B(end);
+        ENABLE_INT_COMPARE_B();
+        #endif
 			rx_target = capture + ticks_per_bit + ticks_per_bit/2;
 			rx_state = 1;
 		}
@@ -253,7 +281,11 @@ ISR(CAPTURE_INTERRUPT)
 			target += ticks_per_bit;
 			state++;
 			if (state >= 9) {
+#if defined(ALTSS_USE_FTM1)
+			    PIT0_STOP();
+#else
 				DISABLE_INT_COMPARE_B();
+#endif
 				head = rx_buffer_head + 1;
 				if (head >= RX_BUFFER_SIZE) head = 0;
 				if (head != rx_buffer_tail) {
@@ -272,7 +304,7 @@ ISR(CAPTURE_INTERRUPT)
 	//if (GET_TIMER_COUNT() - capture > ticks_per_bit) AltSoftSerial::timing_error = true;
 }
 
-ISR(COMPARE_B_INTERRUPT)
+void altss_compare_b_interrupt()
 {
 	uint8_t head, state, bit;
 
@@ -294,7 +326,6 @@ ISR(COMPARE_B_INTERRUPT)
 	CONFIG_CAPTURE_FALLING_EDGE();
 	rx_bit = 0;
 }
-
 
 
 int AltSoftSerial::read(void)
@@ -332,7 +363,7 @@ int AltSoftSerial::available(void)
 }
 
 int AltSoftSerial::availableForWrite(void)
-{ 
+{
 	uint8_t head, tail;
 	head = tx_buffer_head;
 	tail = tx_buffer_tail;
@@ -358,3 +389,32 @@ void ftm0_isr(void)
 }
 #endif
 
+#if defined(ALTSS_USE_FTM1)
+extern "C" void ftm1_isr(void)
+{
+  uint32_t flags = TIMER_STATUS();    // FTM1_STATUS
+  CLEAR_TIMER_STATUS();               // clear all latched flags
+
+  // RX capture on CH0?
+  if ((flags & (1u << 0)) && (FTM1_C0SC & 0x40)) {
+    altss_capture_interrupt();
+  }
+
+  // TX compare on CH1?
+  if ((flags & (1u << 1)) && (FTM1_C1SC & 0x40)) {
+    altss_compare_a_interrupt();
+  }
+}
+#endif
+
+#if defined(ALTSS_USE_FTM1)
+extern "C" void pit_isr(void)
+{
+  // PIT has a shared IRQ for all channels on K20; service channel 0
+  if (PIT_TFLG0 & PIT_TFLG_TIF) {
+    PIT0_CLEAR_FLAG();
+    PIT0_STOP();                 // one-shot
+    altss_compare_b_interrupt(); // reuse library's timeout completion
+  }
+}
+#endif

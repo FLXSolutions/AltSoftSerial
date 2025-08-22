@@ -1,17 +1,17 @@
 /* An Alternative Software Serial Library
  * http://www.pjrc.com/teensy/td_libs_AltSoftSerial.html
  * Copyright (c) 2014 PJRC.COM, LLC, Paul Stoffregen, paul@pjrc.com
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -184,4 +184,80 @@
   #define ISR(f) static void f (void)
 
 
+  #elif defined(ALTSS_USE_FTM1)
+  #define FTM_CnSC_CHF		(1 << 7)
+  #define FTM_CnSC_CHIE		(1 << 6)
+  #define FTM_CnSC_MSB		(1 << 5)
+  #define FTM_CnSC_MSA		(1 << 4)
+  #define FTM_CnSC_ELSB		(1 << 3)
+  #define FTM_CnSC_ELSA		(1 << 2)
+  #define FTM_CnSC_DMA		(1 << 0)
+
+  // ---------- Clock gating ----------
+  #define CONFIG_TIMER_ENABLE()         (SIM_SCGC6 |= SIM_SCGC6_FTM1)
+  #define CONFIG_TIMER_DISABLE()        (SIM_SCGC6 &= ~SIM_SCGC6_FTM1)
+
+  // ---------- Counter / prescale ----------
+  #define GET_TIMER_COUNT()             (FTM1_CNT)
+  #define SET_TIMER_COUNT(val)          (FTM1_CNT = (val))
+  #define SET_TIMER_MOD(val)            (FTM1_MOD = (val))
+
+  // FTM_SC: CLKS (system clock), PS (prescale)
+  #define CONFIG_TIMER_NOPRESCALE()     do{ FTM1_SC = FTM_SC_CLKS(1) | FTM_SC_PS(0); }while(0)
+  #define CONFIG_TIMER_PRESCALE_8()     do{ FTM1_SC = FTM_SC_CLKS(1) | FTM_SC_PS(3); }while(0)
+  // Teensy 3.x AltSoftSerial uses 128 or 256 depending on chip; MK20 has /128 available.
+  #define CONFIG_TIMER_PRESCALE_128()   do{ FTM1_SC = FTM_SC_CLKS(1) | FTM_SC_PS(7); }while(0)
+
+  // ---------- Channel mapping ----------
+  // RX = FTM1_CH0, TX = FTM1_CH1
+  #define GET_INPUT_CAPTURE()           (FTM1_C0V)
+  #define SET_COMPARE_A(val)            (FTM1_C1V = (val))
+
+  // ---------- Edge select for capture (toggle rising/falling) ----------
+  #define CONFIG_CAPTURE_RISING_EDGE()  do{ FTM1_C0SC = FTM_CnSC_CHIE | FTM_CnSC_ELSA; }while(0)
+  #define CONFIG_CAPTURE_FALLING_EDGE() do{ FTM1_C0SC = FTM_CnSC_CHIE | FTM_CnSC_ELSB; }while(0)
+
+  // ---------- Compare A output mode (toggle on compare) ----------
+  // Use ELSA|MSA per library's style (set/clear driven by macros below).
+  #define CONFIG_COMPARE_A_MODE()       do{ FTM1_C1SC = FTM_CnSC_CHIE | FTM_CnSC_ELSB | FTM_CnSC_MSA; }while(0)
+
+  // Match control helpers: these mirror the library's semantics
+  #define CONFIG_MATCH_CLEAR()          do{ /* drive low on compare */  FTM1_C1SC = (FTM1_C1SC & ~FTM_CnSC_ELSA) | (FTM_CnSC_ELSB | FTM_CnSC_MSA); }while(0)
+  #define CONFIG_MATCH_SET()            do{ /* drive high on compare */ FTM1_C1SC = (FTM1_C1SC & ~FTM_CnSC_ELSB) | (FTM_CnSC_ELSA | FTM_CnSC_MSA); }while(0)
+  #define CONFIG_MATCH_NORMAL()         do{ /* disconnect */            FTM1_C1SC = (FTM1_C1SC & ~(FTM_CnSC_ELSA|FTM_CnSC_ELSB|FTM_CnSC_MSA)); }while(0)
+
+  // ---------- Interrupt enables/clears ----------
+  #define ENABLE_INT_INPUT_CAPTURE()    do{ NVIC_ENABLE_IRQ(IRQ_FTM1); FTM1_C0SC |= FTM_CnSC_CHIE; }while(0)
+  #define DISABLE_INT_INPUT_CAPTURE()   do{ FTM1_C0SC &= ~FTM_CnSC_CHIE; }while(0)
+
+  #define ENABLE_INT_COMPARE_A()        do{ NVIC_ENABLE_IRQ(IRQ_FTM1); FTM1_C1SC |= FTM_CnSC_CHIE; }while(0)
+  #define DISABLE_INT_COMPARE_A()       do{ FTM1_C1SC &= ~FTM_CnSC_CHIE; }while(0)
+
+  // We don't have COMPARE_B on FTM1; we'll route it to PIT0 instead.
+  // Keep these as no-ops to satisfy existing calls; we'll wire the real enable/disable in code paths.
+  #define ENABLE_INT_COMPARE_B()        ((void)0)
+  #define DISABLE_INT_COMPARE_B()       ((void)0)
+
+  // ---------- Status helpers ----------
+  #define GET_COMPARE_A()               (FTM1_C1V)
+  #define SET_COMPARE_A_NOW(off)        (FTM1_C1V = (uint16_t)((GET_TIMER_COUNT()) + (off)))
+
+  // ---------- Module status ----------
+  #define TIMER_STATUS()                (FTM1_STATUS)
+  #define CLEAR_TIMER_STATUS()          do{ FTM1_STATUS = 0; }while(0)
+    #ifdef ISR
+    #undef ISR
+    #endif
+    #define ISR(f) static void f (void)
+
+    // --------- PIT0 helpers for "compare B" timeout (one-shot) ---------
+    #if defined(ALTSS_USE_FTM1)  // Only needed for this variant
+
+    #define PIT_ENABLE()                  do{ SIM_SCGC6 |= SIM_SCGC6_PIT; PIT_MCR = 0; }while(0)
+    #define PIT0_SET_TICKS(ticks)         do{ PIT_LDVAL0 = (ticks); }while(0)   // LDVAL = (N-1) style on Kinetis
+    #define PIT0_START()                  do{ NVIC_ENABLE_IRQ(IRQ_PIT_CH0); PIT_TCTRL0 = PIT_TCTRL_TIE | PIT_TCTRL_TEN; }while(0)
+    #define PIT0_STOP()                   do{ PIT_TCTRL0 = 0; PIT_TFLG0 = PIT_TFLG_TIF; }while(0)
+    #define PIT0_CLEAR_FLAG()             do{ PIT_TFLG0 = PIT_TFLG_TIF; }while(0)
+
+    #endif
 #endif
