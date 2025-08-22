@@ -74,11 +74,6 @@ void AltSoftSerial::init(uint32_t cycles_per_bit)
       CONFIG_TIMER_ENABLE();
       PIT_ENABLE();
 
-      // Pin mux:
-      //  - PTB0 (Teensy 14) -> FTM1_CH0 (ALT3), with pullup for RX idling high
-      //  - PTB1 (Teensy 15) -> FTM1_CH1 (ALT3), push-pull driven by FTM
-      CORE_PIN14_CONFIG = PORT_PCR_MUX(3) | PORT_PCR_PE | PORT_PCR_PS;  // ALT3 + pullup
-      CORE_PIN15_CONFIG = PORT_PCR_MUX(3);                              // ALT3
 
       // Reset counter and set compare mode on TX channel
       SET_TIMER_COUNT(0);
@@ -86,35 +81,35 @@ void AltSoftSerial::init(uint32_t cycles_per_bit)
     #endif
 
 	//Serial.printf("cycles_per_bit = %d\n", cycles_per_bit);
-	if (cycles_per_bit < MAX_COUNTS_PER_BIT) {
-		CONFIG_TIMER_NOPRESCALE();
-	} else {
-		cycles_per_bit /= 8;
-		//Serial.printf("cycles_per_bit/8 = %d\n", cycles_per_bit);
-		if (cycles_per_bit < MAX_COUNTS_PER_BIT) {
-			CONFIG_TIMER_PRESCALE_8();
-		} else {
-#if defined(CONFIG_TIMER_PRESCALE_256)
-			cycles_per_bit /= 32;
-			//Serial.printf("cycles_per_bit/256 = %d\n", cycles_per_bit);
-			if (cycles_per_bit < MAX_COUNTS_PER_BIT) {
-				CONFIG_TIMER_PRESCALE_256();
-			} else {
-				return; // baud rate too low for AltSoftSerial
-			}
-#elif defined(CONFIG_TIMER_PRESCALE_128)
-			cycles_per_bit /= 16;
-			//Serial.printf("cycles_per_bit/128 = %d\n", cycles_per_bit);
-			if (cycles_per_bit < MAX_COUNTS_PER_BIT) {
-				CONFIG_TIMER_PRESCALE_128();
-			} else {
-				return; // baud rate too low for AltSoftSerial
-			}
-#else
-			return; // baud rate too low for AltSoftSerial
-#endif
-		}
-	}
+// 	if (cycles_per_bit < MAX_COUNTS_PER_BIT) {
+// 		CONFIG_TIMER_NOPRESCALE();
+// 	} else {
+// 		cycles_per_bit /= 8;
+// 		//Serial.printf("cycles_per_bit/8 = %d\n", cycles_per_bit);
+// 		if (cycles_per_bit < MAX_COUNTS_PER_BIT) {
+// 			CONFIG_TIMER_PRESCALE_8();
+// 		} else {
+// #if defined(CONFIG_TIMER_PRESCALE_256)
+// 			cycles_per_bit /= 32;
+// 			//Serial.printf("cycles_per_bit/256 = %d\n", cycles_per_bit);
+// 			if (cycles_per_bit < MAX_COUNTS_PER_BIT) {
+// 				CONFIG_TIMER_PRESCALE_256();
+// 			} else {
+// 				return; // baud rate too low for AltSoftSerial
+// 			}
+// #elif defined(CONFIG_TIMER_PRESCALE_128)
+// 			cycles_per_bit /= 16;
+// 			//Serial.printf("cycles_per_bit/128 = %d\n", cycles_per_bit);
+// 			if (cycles_per_bit < MAX_COUNTS_PER_BIT) {
+// 				CONFIG_TIMER_PRESCALE_128();
+// 			} else {
+// 				return; // baud rate too low for AltSoftSerial
+// 			}
+// #else
+// 			return; // baud rate too low for AltSoftSerial
+// #endif
+// 		}
+// 	}
 	ticks_per_bit = cycles_per_bit;
 	rx_stop_ticks = cycles_per_bit * 37 / 4;
 	pinMode(INPUT_CAPTURE_PIN, INPUT_PULLUP);
@@ -152,7 +147,10 @@ void AltSoftSerial::writeByte(uint8_t b)
 
 	head = tx_buffer_head + 1;
 	if (head >= TX_BUFFER_SIZE) head = 0;
+    Serial1.println((tx_buffer_tail == head) ? "true" : "false");
+
 	while (tx_buffer_tail == head) ; // wait until space in buffer
+
 	intr_state = SREG;
 	cli();
 	if (tx_state) {
@@ -392,8 +390,8 @@ void ftm0_isr(void)
 #if defined(ALTSS_USE_FTM1)
 extern "C" void ftm1_isr(void)
 {
-  uint32_t flags = TIMER_STATUS();    // FTM1_STATUS
-  CLEAR_TIMER_STATUS();               // clear all latched flags
+  uint32_t flags = FTM1_STATUS;
+  FTM1_STATUS = 0;
 
   // RX capture on CH0?
   if ((flags & (1u << 0)) && (FTM1_C0SC & 0x40)) {
@@ -402,6 +400,7 @@ extern "C" void ftm1_isr(void)
 
   // TX compare on CH1?
   if ((flags & (1u << 1)) && (FTM1_C1SC & 0x40)) {
+      Serial1.println("isr");
     altss_compare_a_interrupt();
   }
 }

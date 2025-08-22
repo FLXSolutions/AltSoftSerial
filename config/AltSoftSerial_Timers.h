@@ -222,9 +222,9 @@
   #define CONFIG_COMPARE_A_MODE()       do{ FTM1_C1SC = FTM_CnSC_CHIE | FTM_CnSC_ELSB | FTM_CnSC_MSA; }while(0)
 
   // Match control helpers: these mirror the library's semantics
-  #define CONFIG_MATCH_CLEAR()          do{ /* drive low on compare */  FTM1_C1SC = (FTM1_C1SC & ~FTM_CnSC_ELSA) | (FTM_CnSC_ELSB | FTM_CnSC_MSA); }while(0)
-  #define CONFIG_MATCH_SET()            do{ /* drive high on compare */ FTM1_C1SC = (FTM1_C1SC & ~FTM_CnSC_ELSB) | (FTM_CnSC_ELSA | FTM_CnSC_MSA); }while(0)
-  #define CONFIG_MATCH_NORMAL()         do{ /* disconnect */            FTM1_C1SC = (FTM1_C1SC & ~(FTM_CnSC_ELSA|FTM_CnSC_ELSB|FTM_CnSC_MSA)); }while(0)
+  #define CONFIG_MATCH_CLEAR()          do{ FTM1_C1SC = (FTM1_C1SC & ~FTM_CnSC_ELSA) | (FTM_CnSC_ELSB | FTM_CnSC_MSA); }while(0)
+  #define CONFIG_MATCH_SET()            do{ FTM1_C1SC = (FTM1_C1SC & ~FTM_CnSC_ELSB) | (FTM_CnSC_ELSA | FTM_CnSC_MSA); }while(0)
+  #define CONFIG_MATCH_NORMAL()         do{ FTM1_C1SC = (FTM1_C1SC & ~(FTM_CnSC_ELSA|FTM_CnSC_ELSB|FTM_CnSC_MSA)); }while(0)
 
   // ---------- Interrupt enables/clears ----------
   #define ENABLE_INT_INPUT_CAPTURE()    do{ NVIC_ENABLE_IRQ(IRQ_FTM1); FTM1_C0SC |= FTM_CnSC_CHIE; }while(0)
@@ -251,13 +251,10 @@
     #define ISR(f) static void f (void)
 
     // --------- PIT0 helpers for "compare B" timeout (one-shot) ---------
-    #if defined(ALTSS_USE_FTM1)  // Only needed for this variant
-
     #define PIT_ENABLE()                  do{ SIM_SCGC6 |= SIM_SCGC6_PIT; PIT_MCR = 0; }while(0)
     #define PIT0_SET_TICKS(ticks)         do{ PIT_LDVAL0 = (ticks); }while(0)   // LDVAL = (N-1) style on Kinetis
     #define PIT0_START()                  do{ NVIC_ENABLE_IRQ(IRQ_PIT_CH0); PIT_TCTRL0 = PIT_TCTRL_TIE | PIT_TCTRL_TEN; }while(0)
     #define PIT0_STOP()                   do{ PIT_TCTRL0 = 0; PIT_TFLG0 = PIT_TFLG_TIF; }while(0)
     #define PIT0_CLEAR_FLAG()             do{ PIT_TFLG0 = PIT_TFLG_TIF; }while(0)
 
-    #endif
 #endif
