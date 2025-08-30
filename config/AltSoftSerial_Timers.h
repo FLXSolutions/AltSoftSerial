@@ -135,19 +135,19 @@
   // CH0 = compare b     (input timeout)
   #define CONFIG_TIMER_NOPRESCALE()	FTM0_SC = 0; FTM0_CNT = 0; FTM0_MOD = 0xFFFF; \
 					FTM0_SC = FTM_SC_CLKS(1) | FTM_SC_PS(0); \
-					digitalWriteFast(21, HIGH); \
+					/*  digitalWriteFast(21, HIGH);*/ \
 					NVIC_SET_PRIORITY(IRQ_FTM0, 48); \
 					FTM0_C0SC = 0x18; \
 					NVIC_ENABLE_IRQ(IRQ_FTM0);
   #define CONFIG_TIMER_PRESCALE_8()	FTM0_SC = 0; FTM0_CNT = 0; FTM0_MOD = 0xFFFF; \
 					FTM0_SC = FTM_SC_CLKS(1) | FTM_SC_PS(3); \
-					digitalWriteFast(21, HIGH); \
+					/*  digitalWriteFast(21, HIGH);*/ \
 					NVIC_SET_PRIORITY(IRQ_FTM0, 48); \
 					FTM0_C0SC = 0x18; \
 					NVIC_ENABLE_IRQ(IRQ_FTM0);
   #define CONFIG_TIMER_PRESCALE_128()	FTM0_SC = 0; FTM0_CNT = 0; FTM0_MOD = 0xFFFF; \
 					FTM0_SC = FTM_SC_CLKS(1) | FTM_SC_PS(7); \
-					digitalWriteFast(21, HIGH); \
+					/*  digitalWriteFast(21, HIGH);*/ \
 					NVIC_SET_PRIORITY(IRQ_FTM0, 48); \
 					FTM0_C0SC = 0x18; \
 					NVIC_ENABLE_IRQ(IRQ_FTM0);
@@ -157,16 +157,22 @@
   #define CONFIG_MATCH_SET()		(FTM0_C6SC = (FTM0_C6SC & 0xC3) | 0x1C)
   #define CONFIG_CAPTURE_FALLING_EDGE()	(FTM0_C5SC = (FTM0_C5SC & 0xC3) | 0x08)
   #define CONFIG_CAPTURE_RISING_EDGE()	(FTM0_C5SC = (FTM0_C5SC & 0xC3) | 0x04)
+
   #define ENABLE_INT_INPUT_CAPTURE()	FTM0_C5SC = 0x48; \
 					CORE_PIN20_CONFIG = PORT_PCR_MUX(4)|PORT_PCR_PE|PORT_PCR_PS
-  #define ENABLE_INT_COMPARE_A()	FTM0_C6SC |= 0x40; \
-					CORE_PIN21_CONFIG = PORT_PCR_MUX(4)|PORT_PCR_DSE|PORT_PCR_SRE
-  #define ENABLE_INT_COMPARE_B()	(FTM0_C0SC = 0x58)
-  #define DISABLE_INT_INPUT_CAPTURE()	FTM0_C5SC &= ~0x40; \
-					CORE_PIN20_CONFIG = PORT_PCR_MUX(1)|PORT_PCR_PE|PORT_PCR_PS
+
+  #define ENABLE_INT_COMPARE_A()	FTM0_C6SC |= 0x40;
+    //digitalWriteFast(15, HIGH)
+//					CORE_PIN21_CONFIG = PORT_PCR_MUX(4)|PORT_PCR_DSE|PORT_PCR_SRE
+
+					#define ENABLE_INT_COMPARE_B()	(FTM0_C0SC = 0x58)
+  #define DISABLE_INT_INPUT_CAPTURE()	FTM0_C5SC &= ~0x40;
+//					CORE_PIN20_CONFIG = PORT_PCR_MUX(1)|PORT_PCR_PE|PORT_PCR_PS
   #define DISABLE_INT_COMPARE_A()	FTM0_C6SC &= ~0x40; \
-					CORE_PIN21_CONFIG = PORT_PCR_MUX(1)|PORT_PCR_DSE|PORT_PCR_SRE; \
-					digitalWriteFast(21, HIGH)
+                            digitalWriteFast(15, HIGH)
+
+  //					CORE_PIN21_CONFIG = PORT_PCR_MUX(1)|PORT_PCR_DSE|PORT_PCR_SRE; \
+
   #define DISABLE_INT_COMPARE_B()	(FTM0_C0SC &= ~0x40)
   #define GET_TIMER_COUNT()		(FTM0_CNT)
   #define GET_INPUT_CAPTURE()		(FTM0_C5V)
@@ -203,7 +209,13 @@
   #define SET_TIMER_MOD(val)            (FTM1_MOD = (val))
 
   // FTM_SC: CLKS (system clock), PS (prescale)
-  #define CONFIG_TIMER_NOPRESCALE()     do{ FTM1_SC = FTM_SC_CLKS(1) | FTM_SC_PS(0); }while(0)
+  #define CONFIG_TIMER_NOPRESCALE()  \
+  FTM1_SC = 0;                                                                  \
+        SET_TIMER_COUNT(0);                                                           \
+        SET_TIMER_MOD(0xFFFF);                                                        \
+        FTM1_SC = FTM_SC_CLKS(1) | FTM_SC_PS(0);                                      \
+        digitalWriteFast(OUTPUT_COMPARE_A_PIN, HIGH); \
+        NVIC_SET_PRIORITY(IRQ_FTM1, 48);
   #define CONFIG_TIMER_PRESCALE_8()     do{ FTM1_SC = FTM_SC_CLKS(1) | FTM_SC_PS(3); }while(0)
   // Teensy 3.x AltSoftSerial uses 128 or 256 depending on chip; MK20 has /128 available.
   #define CONFIG_TIMER_PRESCALE_128()   do{ FTM1_SC = FTM_SC_CLKS(1) | FTM_SC_PS(7); }while(0)
@@ -214,8 +226,8 @@
   #define SET_COMPARE_A(val)            (FTM1_C1V = (val))
 
   // ---------- Edge select for capture (toggle rising/falling) ----------
-  #define CONFIG_CAPTURE_RISING_EDGE()  do{ FTM1_C0SC = FTM_CnSC_CHIE | FTM_CnSC_ELSA; }while(0)
-  #define CONFIG_CAPTURE_FALLING_EDGE() do{ FTM1_C0SC = FTM_CnSC_CHIE | FTM_CnSC_ELSB; }while(0)
+  // #define CONFIG_CAPTURE_RISING_EDGE()  do{ FTM1_C0SC = FTM_CnSC_CHIE | FTM_CnSC_ELSA; }while(0)
+  // #define CONFIG_CAPTURE_FALLING_EDGE() do{ FTM1_C0SC = FTM_CnSC_CHIE | FTM_CnSC_ELSB; }while(0)
 
   // ---------- Compare A output mode (toggle on compare) ----------
   // Use ELSA|MSA per library's style (set/clear driven by macros below).
@@ -226,9 +238,19 @@
   #define CONFIG_MATCH_SET()            do{ FTM1_C1SC = (FTM1_C1SC & ~FTM_CnSC_ELSB) | (FTM_CnSC_ELSA | FTM_CnSC_MSA); }while(0)
   #define CONFIG_MATCH_NORMAL()         do{ FTM1_C1SC = (FTM1_C1SC & ~(FTM_CnSC_ELSA|FTM_CnSC_ELSB|FTM_CnSC_MSA)); }while(0)
 
+
+  #define CONFIG_CAPTURE_FALLING_EDGE()	(FTM1_C0SC = (FTM1_C0SC & 0xC3) | 0x08)
+  #define CONFIG_CAPTURE_RISING_EDGE()	(FTM1_C0SC = (FTM1_C0SC & 0xC3) | 0x04)
+  #define ENABLE_INT_INPUT_CAPTURE() \
+        NVIC_ENABLE_IRQ(IRQ_FTM1);                                                   \
+        FTM1_C0SC |= FTM_CnSC_CHIE;                                                  \
+        CORE_PIN14_CONFIG = PORT_PCR_MUX(3) | PORT_PCR_PE | PORT_PCR_PS;
+
   // ---------- Interrupt enables/clears ----------
-  #define ENABLE_INT_INPUT_CAPTURE()    do{ NVIC_ENABLE_IRQ(IRQ_FTM1); FTM1_C0SC |= FTM_CnSC_CHIE; }while(0)
-  #define DISABLE_INT_INPUT_CAPTURE()   do{ FTM1_C0SC &= ~FTM_CnSC_CHIE; }while(0)
+//  #define ENABLE_INT_INPUT_CAPTURE()    do{ NVIC_ENABLE_IRQ(IRQ_FTM1); FTM1_C0SC |= FTM_CnSC_CHIE; }while(0)
+//  #define DISABLE_INT_INPUT_CAPTURE()   do{ FTM1_C0SC &= ~FTM_CnSC_CHIE; }while(0)
+  #define DISABLE_INT_INPUT_CAPTURE()	FTM1_C0SC &= ~0x40; \
+					CORE_PIN14_CONFIG = PORT_PCR_MUX(1)|PORT_PCR_PE|PORT_PCR_PS
 
   #define ENABLE_INT_COMPARE_A()        do{ NVIC_ENABLE_IRQ(IRQ_FTM1); FTM1_C1SC |= FTM_CnSC_CHIE; }while(0)
   #define DISABLE_INT_COMPARE_A()       do{ FTM1_C1SC &= ~FTM_CnSC_CHIE; }while(0)
