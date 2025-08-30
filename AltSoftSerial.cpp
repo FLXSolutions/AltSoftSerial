@@ -467,9 +467,9 @@ void push_to_tx_buffer(uint16_t value){
 }
 
 uint16_t pop_from_tx_buffer(){
-    const auto tail = tx_buffer_tail;
-    auto value = tx_queue[tail];
-    tx_buffer_tail = (tail + 1) % TX_BUFFER_SIZE;
+    auto tail = tx_buffer_tail;
+    auto value = tx_queue[tail++];
+    tx_buffer_tail = (tail < TX_BUFFER_SIZE) ? tail : 0U;
     return value;
 }
 
@@ -522,11 +522,11 @@ void altss_compare_a_interrupt()
     const auto bit = bit_to_write(test_tx_state, byte_to_write);
     //if (!tx_bit_flip_timings.full()){tx_bit_flip_timings.push({bit, ARM_DWT_CYCCNT});}
     digitalWriteFast(OUTPUT_COMPARE_A_PIN,  bit);
-    test_tx_state++;
+    test_tx_state = (test_tx_state == 9U) ? 0U : test_tx_state + 1;
     clock_start_time += ticks_per_bit;
+    FTM0_C6V = clock_start_time;
 
-    if (test_tx_state < 10U){
-		FTM0_C6V = clock_start_time;
+    if (test_tx_state > 0U){
         tx_isr_timings.push(ARM_DWT_CYCCNT - clock_count2);
         return;
 	}
@@ -544,8 +544,8 @@ void altss_compare_a_interrupt()
     // clock_start_time = GET_TIMER_COUNT() + ticks_per_bit;
     // digitalWriteFast(OUTPUT_COMPARE_A_PIN, LOW);
     byte_to_write = pop_from_tx_buffer();
-    test_tx_state = 0U;
-	FTM0_C6V = clock_start_time;
+    // test_tx_state = 0U;
+	// FTM0_C6V = clock_start_time;
     tx_isr_timings.push(ARM_DWT_CYCCNT - clock_count2);
     // add_string_to_queue<2>("\n");
     // altss_compare_a_interrupt();
